@@ -194,27 +194,27 @@ export const overlayState = (
   };
 };
 
-const moveTranslate = (point: Point) =>
-  point ? `translate(${point.x.toFixed(0)}px, ${point.y.toFixed(0)}px)` : '';
-
 export const overlayTransform = ({
   anchor,
   position,
   offset
-}: OverlayParams) => {
-  const res = [];
+}: OverlayParams): { left: number; top: number; transform: string } => {
+  let left = 0;
+  let top = 0;
 
   if (position) {
-    res.push(moveTranslate(position));
+    left += position.x;
+    top += position.y;
   }
 
   if (offset && offset.x !== undefined && offset.y !== undefined) {
-    res.push(moveTranslate(offset));
+    left += offset.x;
+    top += offset.y;
   }
 
-  if (anchor) {
-    res.push(anchorTranslates[anchor]);
-  }
-
-  return res;
+  return {
+    top,
+    left,
+    transform: anchorTranslates[anchor || 'top-left']
+  };
 };
