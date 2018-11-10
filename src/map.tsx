@@ -95,6 +95,8 @@ export interface FactoryParameters {
   bearingSnap?: number;
   injectCss?: boolean;
   transformRequest?: RequestTransformFunction;
+  fadeDuration?: number;
+  crossSourceCollisions?: boolean;
 }
 
 // Satisfy typescript pitfall with defaultProps
@@ -111,6 +113,8 @@ declare global {
     export interface MapboxOptions {
       failIfMajorPerformanceCaveat?: boolean;
       transformRequest?: RequestTransformFunction;
+      fadeDuration?: number;
+      crossSourceCollisions?: boolean;
     }
   }
 }
@@ -139,7 +143,9 @@ const ReactMapboxFactory = ({
   classes,
   bearingSnap = 7,
   injectCss = true,
-  transformRequest
+  transformRequest,
+  fadeDuration = 300,
+  crossSourceCollisions = true
 }: FactoryParameters) => {
   if (injectCss) {
     injectCSS(window);
@@ -236,7 +242,9 @@ const ReactMapboxFactory = ({
         classes,
         bearingSnap,
         failIfMajorPerformanceCaveat,
-        transformRequest
+        transformRequest,
+        fadeDuration,
+        crossSourceCollisions
       };
 
       if (bearing) {
