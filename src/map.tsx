@@ -88,6 +88,7 @@ export interface FactoryParameters {
   doubleClickZoom?: boolean;
   keyboard?: boolean;
   dragPan?: boolean;
+  dragPanOptions?: { inertiaMaxSpeed: number, inertiaDeceleration: number };
   boxZoom?: boolean;
   refreshExpiredTiles?: boolean;
   failIfMajorPerformanceCaveat?: boolean;
@@ -115,6 +116,7 @@ declare global {
       transformRequest?: RequestTransformFunction;
       fadeDuration?: number;
       crossSourceCollisions?: boolean;
+      dragPanOptions?: { inertiaMaxSpeed: number, inertiaDeceleration: number }
     }
   }
 }
@@ -137,6 +139,7 @@ const ReactMapboxFactory = ({
   doubleClickZoom = true,
   keyboard = true,
   dragPan = true,
+  dragPanOptions,
   boxZoom = true,
   refreshExpiredTiles = true,
   failIfMajorPerformanceCaveat = false,
@@ -236,6 +239,7 @@ const ReactMapboxFactory = ({
         doubleClickZoom,
         keyboard,
         dragPan,
+        dragPanOptions,
         boxZoom,
         refreshExpiredTiles,
         logoPosition,
