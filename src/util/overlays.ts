@@ -39,9 +39,9 @@ export const anchorTranslates = {
 
 // Hack /o\
 const defaultElement = { offsetWidth: 0, offsetHeight: 0 };
-const defaultPoint = [0, 0];
+const defaultPoint: [number, number] = [0, 0];
 
-const projectCoordinates = (map: Map, coordinates: number[]) =>
+const projectCoordinates = (map: Map, coordinates: [number, number]) =>
   map.project(LngLat.convert(coordinates));
 
 const calculateAnchor = (
@@ -133,7 +133,7 @@ const getVerticalOffsetRatio = (anchor: Anchor): number => {
 };
 
 const normalizedOffsets = (
-  offset?: number | Point | OptionalOffset | number[]
+  offset?: number | Point | OptionalOffset | [number, number]
 ): AnchorsOffset => {
   if (!offset) {
     return normalizedOffsets(new Point(0, 0));

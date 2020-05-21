@@ -81,7 +81,7 @@ const switchStyles = Object.keys(styles).filter(k =>
 export interface State {
   styleKey: string;
   featuresPostion: number[][];
-  mapCenter: number[];
+  mapCenter: [number, number];
   renderLayer: boolean;
 }
 
@@ -90,7 +90,7 @@ export interface Props {
   onStyleLoad?: (map: any) => any;
 }
 
-const InitialUserPostion = [-0.2416815, 51.5285582];
+const InitialUserPostion = [-0.2416815, 51.5285582] as [number, number];
 
 class StyleUpdate extends React.Component<Props, State> {
   public state: State = {
@@ -101,7 +101,7 @@ class StyleUpdate extends React.Component<Props, State> {
     renderLayer: true
   };
 
-  public componentWillMount() {
+  public UNSAFE_componentWillMount() {
     navigator.geolocation.getCurrentPosition(
       ({ coords }: any) => {
         const { latitude, longitude } = coords;

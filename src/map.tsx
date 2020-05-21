@@ -1,7 +1,5 @@
 import * as MapboxGl from 'mapbox-gl';
 import * as React from 'react';
-import * as PropTypes from 'prop-types';
-import injectCSS from './util/inject-css';
 import {
   Events,
   listenEvents,
@@ -9,6 +7,8 @@ import {
   Listeners,
   updateEvents
 } from './map-events';
+import { MapContext } from './context';
+import { createPortal } from 'react-dom';
 const isEqual = require('deep-equal'); //tslint:disable-line
 
 export interface PaddingOptions {
@@ -22,11 +22,12 @@ export interface FitBoundsOptions {
   linear?: boolean;
   easing?: (time: number) => number;
   padding?: number | PaddingOptions;
-  offset?: MapboxGl.Point | number[];
+  offset?: MapboxGl.Point | [number, number];
   maxZoom?: number;
+  duration?: number;
 }
 
-export type FitBounds = number[][];
+export type FitBounds = [[number, number], [number, number]];
 
 export interface AnimationOptions {
   duration: number;
@@ -45,7 +46,7 @@ export interface FlyToOptions {
 // React Props updated between re-render
 export interface Props {
   style: string | MapboxGl.Style;
-  center?: number[];
+  center?: [number, number];
   zoom?: [number];
   maxBounds?: MapboxGl.LngLatBounds | FitBounds;
   fitBounds?: FitBounds;
@@ -58,6 +59,7 @@ export interface Props {
   animationOptions?: Partial<AnimationOptions>;
   flyToOptions?: Partial<FlyToOptions>;
   children?: JSX.Element | JSX.Element[] | Array<JSX.Element | undefined>;
+  renderChildrenInPortal?: boolean;
 }
 
 export interface State {
@@ -65,9 +67,10 @@ export interface State {
   ready: boolean;
 }
 
-export type RequestTransformFunction = (url: string,
-                                        // tslint:disable-next-line:no-any
-                                        resourceType: any) => any;
+export type RequestTransformFunction = (
+  url: string,
+  resourceType: any // tslint:disable-line:no-any
+) => any; // tslint:disable-line:no-any
 
 // Static Properties of the map
 export interface FactoryParameters {
@@ -80,7 +83,9 @@ export interface FactoryParameters {
   scrollZoom?: boolean;
   interactive?: boolean;
   dragRotate?: boolean;
+  pitchWithRotate?: boolean;
   attributionControl?: boolean;
+  customAttribution?: string | string[];
   logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   renderWorldCopies?: boolean;
   trackResize?: boolean;
@@ -88,32 +93,28 @@ export interface FactoryParameters {
   doubleClickZoom?: boolean;
   keyboard?: boolean;
   dragPan?: boolean;
-  dragPanOptions?: { inertiaMaxSpeed: number, inertiaDeceleration: number };
   boxZoom?: boolean;
   refreshExpiredTiles?: boolean;
   failIfMajorPerformanceCaveat?: boolean;
-  classes?: string[];
   bearingSnap?: number;
-  injectCss?: boolean;
+  injectCSS?: boolean;
   transformRequest?: RequestTransformFunction;
   fadeDuration?: number;
   crossSourceCollisions?: boolean;
+  antialias?: boolean;
 }
 
 // Satisfy typescript pitfall with defaultProps
 const defaultZoom = [11];
 const defaultMovingMethod = 'flyTo';
 const defaultCenter = [-0.2416815, 51.5285582];
-const defaultContainerStyle = {
-  textAlign: 'left'
-};
 
 // tslint:disable-next-line:no-namespace
 declare global {
   namespace mapboxgl {
     export interface MapboxOptions {
       failIfMajorPerformanceCaveat?: boolean;
-      transformRequest?: RequestTransformFunction;
+      transformRequest?: MapboxGl.TransformRequestFunction;
       fadeDuration?: number;
       crossSourceCollisions?: boolean;
       dragPanOptions?: { inertiaMaxSpeed: number, inertiaDeceleration: number }
@@ -131,7 +132,9 @@ const ReactMapboxFactory = ({
   scrollZoom = true,
   interactive = true,
   dragRotate = true,
+  pitchWithRotate = true,
   attributionControl = true,
+  customAttribution,
   logoPosition = 'bottom-left',
   renderWorldCopies = true,
   trackResize = true,
@@ -139,19 +142,19 @@ const ReactMapboxFactory = ({
   doubleClickZoom = true,
   keyboard = true,
   dragPan = true,
-  dragPanOptions,
   boxZoom = true,
   refreshExpiredTiles = true,
   failIfMajorPerformanceCaveat = false,
-  classes,
   bearingSnap = 7,
-  injectCss = true,
+  injectCSS = true,
+  antialias = false,
   transformRequest,
   fadeDuration = 300,
   crossSourceCollisions = true
 }: FactoryParameters) => {
-  if (injectCss) {
-    injectCSS(window);
+  if (injectCSS) {
+    // tslint:disable-next-line:no-submodule-imports
+    require('mapbox-gl/dist/mapbox-gl.css');
   }
 
   return class ReactMapboxGl extends React.Component<Props & Events, State> {
@@ -162,14 +165,13 @@ const ReactMapboxFactory = ({
       zoom: defaultZoom,
       bearing: 0,
       movingMethod: defaultMovingMethod,
-      pitch: 0
+      pitch: 0,
+      containerStyle: {
+        textAlign: 'left'
+      }
     };
 
-    public static childContextTypes = {
-      map: PropTypes.object
-    };
-
-    public state = {
+    public state: State = {
       map: undefined,
       ready: false
     };
@@ -179,13 +181,9 @@ const ReactMapboxFactory = ({
     // tslint:disable-next-line:variable-name
     public _isMounted = true;
 
-    public getChildContext = () => ({
-      map: this.state.map
-    });
+    public container?: HTMLElement;
 
-    public container: HTMLElement;
-
-    public calcCenter = (bounds: FitBounds): number[] => [
+    public calcCenter = (bounds: FitBounds): [number, number] => [
       (bounds[0][0] + bounds[1][0]) / 2,
       (bounds[0][1] + bounds[1][1]) / 2
     ];
@@ -223,7 +221,7 @@ const ReactMapboxFactory = ({
         minZoom,
         maxZoom,
         maxBounds,
-        container: this.container,
+        container: this.container!,
         center:
           fitBounds && center === defaultCenter
             ? this.calcCenter(fitBounds)
@@ -231,21 +229,22 @@ const ReactMapboxFactory = ({
         style,
         scrollZoom,
         attributionControl,
+        customAttribution,
         interactive,
         dragRotate,
+        pitchWithRotate,
         renderWorldCopies,
         trackResize,
         touchZoomRotate,
         doubleClickZoom,
         keyboard,
         dragPan,
-        dragPanOptions,
         boxZoom,
         refreshExpiredTiles,
         logoPosition,
-        classes,
         bearingSnap,
         failIfMajorPerformanceCaveat,
+        antialias,
         transformRequest,
         fadeDuration,
         crossSourceCollisions
@@ -275,7 +274,7 @@ const ReactMapboxFactory = ({
       this.setState({ map });
 
       if (fitBounds) {
-        map.fitBounds(fitBounds, fitBoundsOptions);
+        map.fitBounds(fitBounds, fitBoundsOptions, { fitboundUpdate: true });
       }
 
       // tslint:disable-next-line:no-any
@@ -293,7 +292,7 @@ const ReactMapboxFactory = ({
     }
 
     public componentWillUnmount() {
-      const { map } = this.state as State;
+      const { map } = this.state;
       this._isMounted = false;
 
       if (map) {
@@ -301,8 +300,8 @@ const ReactMapboxFactory = ({
       }
     }
 
-    public componentWillReceiveProps(nextProps: Props & Events) {
-      const { map } = this.state as State;
+    public UNSAFE_componentWillReceiveProps(nextProps: Props & Events) {
+      const { map } = this.state;
       if (!map) {
         return null;
       }
@@ -356,7 +355,9 @@ const ReactMapboxFactory = ({
           didFitBoundsUpdate ||
           !isEqual(this.props.fitBoundsOptions, nextProps.fitBoundsOptions)
         ) {
-          map.fitBounds(nextProps.fitBounds, nextProps.fitBoundsOptions);
+          map.fitBounds(nextProps.fitBounds, nextProps.fitBoundsOptions, {
+            fitboundUpdate: true
+          });
         }
       }
 
@@ -391,17 +392,44 @@ const ReactMapboxFactory = ({
     };
 
     public render() {
-      const { containerStyle, className, children } = this.props;
-      const { ready } = this.state;
+      const {
+        containerStyle,
+        className,
+        children,
+        renderChildrenInPortal
+      } = this.props;
+
+      const { ready, map } = this.state;
+
+      if (renderChildrenInPortal) {
+        const container =
+          ready && map && typeof map.getCanvasContainer === 'function'
+            ? map.getCanvasContainer()
+            : undefined;
+
+        return (
+          <MapContext.Provider value={map}>
+            <div
+              ref={this.setRef}
+              className={className}
+              style={{ ...containerStyle }}
+            >
+              {ready && container && createPortal(children, container)}
+            </div>
+          </MapContext.Provider>
+        );
+      }
 
       return (
-        <div
-          ref={this.setRef}
-          className={className}
-          style={{ ...containerStyle, ...defaultContainerStyle }}
-        >
-          {ready && children}
-        </div>
+        <MapContext.Provider value={map}>
+          <div
+            ref={this.setRef}
+            className={className}
+            style={{ ...containerStyle }}
+          >
+            {ready && children}
+          </div>
+        </MapContext.Provider>
       );
     }
   };

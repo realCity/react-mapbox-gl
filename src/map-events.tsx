@@ -36,6 +36,7 @@ export interface Events {
   onSourceData?: MapEvent;
   onDataLoading?: MapEvent;
   onStyleDataLoading?: MapEvent;
+  onStyleImageMissing?: MapEvent;
   onTouchCancel?: MapEvent;
   onData?: MapEvent;
   onSourceDataLoading?: MapEvent;
@@ -82,6 +83,7 @@ export const events: EventMapping = {
   onSourceData: 'sourcedata',
   onDataLoading: 'dataloading',
   onStyleDataLoading: 'styledataloading',
+  onStyleImageMissing: 'styleimagemissing',
   onTouchCancel: 'touchcancel',
   onData: 'data',
   onSourceDataLoading: 'sourcedataloading',
@@ -98,8 +100,7 @@ export const events: EventMapping = {
 };
 
 export type Listeners = {
-  [// tslint:disable-next-line:no-any
-  T in keyof Events]: (evt: React.SyntheticEvent<any>) => void
+  [T in keyof Events]: (evt: React.SyntheticEvent<any>) => void // tslint:disable-line:no-any
 };
 
 export const listenEvents = (
@@ -108,7 +109,7 @@ export const listenEvents = (
   map: MapboxGl.Map
 ) =>
   Object.keys(partialEvents).reduce(
-    (listeners, event: keyof Events) => {
+    (listeners, event) => {
       const propEvent = props[event];
 
       if (propEvent) {
@@ -134,7 +135,8 @@ export const updateEvents = (
   map: MapboxGl.Map
 ) => {
   const toListenOff = Object.keys(events).filter(
-    eventKey => listeners[eventKey] && typeof nextProps[eventKey] !== 'function'
+    eventKey =>
+      listeners[eventKey] && nextProps[eventKey] !== listeners[eventKey]
   );
 
   toListenOff.forEach(key => {
@@ -143,7 +145,7 @@ export const updateEvents = (
   });
 
   const toListenOn = Object.keys(events)
-    .filter(key => !listeners[key] && typeof nextProps[key] === 'function')
+    .filter(key => typeof nextProps[key] === 'function')
     .reduce((acc, next) => ((acc[next] = events[next]), acc), {});
 
   const newListeners = listenEvents(toListenOn, nextProps, map);

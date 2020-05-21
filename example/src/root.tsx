@@ -53,7 +53,7 @@ export default class Root extends React.Component<RouteComponentProps<void, void
     selected: paths.indexOf(this.props.location.pathname)
   }
 
-  public componentWillMount() {
+  public UNSAFE_componentWillMount() {
     browserHistory.listen(ev => {
       this.setState({
         selected: paths.indexOf(ev.pathname)
@@ -77,7 +77,7 @@ export default class Root extends React.Component<RouteComponentProps<void, void
               target="_blank"
               style={{ borderRight: 0 }}
             >
-              Github
+              GitHub
             </ExternalLink>
           </Nav>
         </Header>

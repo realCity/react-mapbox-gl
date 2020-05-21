@@ -1,9 +1,7 @@
 import * as React from 'react';
-import * as PropTypes from 'prop-types';
 import * as MapboxGL from 'mapbox-gl';
 const isEqual = require('deep-equal'); //tslint:disable-line
 import diff from './util/diff';
-import { Feature, Context } from './util/types';
 import { Props as FeatureProps } from './feature';
 
 export type Paint =
@@ -35,6 +33,21 @@ export type ImageDefinitionWithOptions = [
   HTMLImageElement,
   ImageOptions
 ];
+
+// tslint:disable-next-line:no-any
+export type MouseEvent = (evt: any) => any;
+
+export interface LayerEvents {
+  onMouseMove?: MouseEvent;
+  onMouseEnter?: MouseEvent;
+  onMouseLeave?: MouseEvent;
+  onMouseDown?: MouseEvent;
+  onMouseUp?: MouseEvent;
+  onClick?: MouseEvent;
+  onTouchStart?: MouseEvent;
+  onTouchEnd?: MouseEvent;
+  onTouchCancel?: MouseEvent;
+}
 
 export interface LayerCommonProps {
   type?:
@@ -69,17 +82,28 @@ export interface LayerCommonProps {
 export interface OwnProps {
   id: string;
   draggedChildren?: JSX.Element[];
+  map: MapboxGL.Map;
 }
 
-export type Props = LayerCommonProps & OwnProps;
+export type Props = LayerCommonProps & LayerEvents & OwnProps;
+
+type EventToHandlersType = {
+  [key in keyof MapboxGL.MapLayerEventType]?: keyof LayerEvents
+};
+
+const eventToHandler: EventToHandlersType = {
+  touchstart: 'onTouchStart',
+  touchend: 'onTouchEnd',
+  touchcancel: 'onTouchCancel',
+  mousemove: 'onMouseMove',
+  mouseenter: 'onMouseEnter',
+  mouseleave: 'onMouseLeave',
+  mousedown: 'onMouseDown',
+  mouseup: 'onMouseUp',
+  click: 'onClick'
+};
 
 export default class Layer extends React.Component<Props> {
-  public context: Context;
-
-  public static contextTypes = {
-    map: PropTypes.object
-  };
-
   public static defaultProps = {
     type: 'symbol' as 'symbol',
     layout: {},
@@ -96,7 +120,7 @@ export default class Layer extends React.Component<Props> {
   };
 
   // tslint:disable-next-line:no-any
-  private geometry = (coordinates: any) => {
+  private geometry = (coordinates: any): GeoJSON.Geometry => {
     switch (this.props.type) {
       case 'symbol':
       case 'circle':
@@ -106,8 +130,14 @@ export default class Layer extends React.Component<Props> {
         };
 
       case 'fill':
+        if (Array.isArray(coordinates[0][0][0])) {
+          return {
+            type: 'MultiPolygon',
+            coordinates
+          };
+        }
         return {
-          type: coordinates.length > 1 ? 'MultiPolygon' : 'Polygon',
+          type: 'Polygon',
           coordinates
         };
 
@@ -125,7 +155,10 @@ export default class Layer extends React.Component<Props> {
     }
   };
 
-  private makeFeature = (props: FeatureProps, id: number): Feature => ({
+  private makeFeature = (
+    props: FeatureProps,
+    id: number
+  ): GeoJSON.Feature<GeoJSON.Geometry, GeoJSON.GeoJsonProperties> => ({
     type: 'Feature',
     geometry: this.geometry(props.coordinates),
     properties: { ...props.properties, id }
@@ -146,7 +179,7 @@ export default class Layer extends React.Component<Props> {
       maxZoom,
       filter
     } = this.props;
-    const { map } = this.context;
+    const { map } = this.props;
 
     const layer: MapboxGL.Layer = {
       id,
@@ -177,9 +210,11 @@ export default class Layer extends React.Component<Props> {
 
     if (images) {
       const normalizedImages = !Array.isArray(images[0]) ? [images] : images;
-      (normalizedImages as ImageDefinitionWithOptions[]).forEach(image => {
-        map.addImage(image[0], image[1], image[2]);
-      });
+      (normalizedImages as ImageDefinitionWithOptions[])
+        .filter(image => !map.hasImage(image[0]))
+        .forEach(image => {
+          map.addImage(image[0], image[1], image[2]);
+        });
     }
 
     if (!sourceId && !map.getSource(id)) {
@@ -189,19 +224,28 @@ export default class Layer extends React.Component<Props> {
     if (!map.getLayer(id)) {
       map.addLayer(layer, before);
     }
+
+    (Object.entries(eventToHandler) as Array<
+      [keyof EventToHandlersType, keyof LayerEvents]
+    >).forEach(([event, propName]) => {
+      const handler = this.props[propName];
+      if (handler) {
+        map.on(event, id, handler);
+      }
+    });
   };
 
   private onStyleDataChange = () => {
     // if the style of the map has been updated and we don't have layer anymore,
     // add it back to the map and force re-rendering to redraw it
-    if (!this.context.map.getLayer(this.props.id)) {
+    if (!this.props.map.getLayer(this.props.id)) {
       this.initialize();
       this.forceUpdate();
     }
   };
 
-  public componentWillMount() {
-    const { map } = this.context;
+  public UNSAFE_componentWillMount() {
+    const { map } = this.props;
 
     this.initialize();
 
@@ -209,12 +253,23 @@ export default class Layer extends React.Component<Props> {
   }
 
   public componentWillUnmount() {
-    const { map } = this.context;
+    const { map } = this.props;
     const { images, id } = this.props;
 
     if (!map || !map.getStyle()) {
       return;
     }
+
+    map.off('styledata', this.onStyleDataChange);
+
+    (Object.entries(eventToHandler) as Array<
+      [keyof EventToHandlersType, keyof LayerEvents]
+    >).forEach(([event, propName]) => {
+      const handler = this.props[propName];
+      if (handler) {
+        map.off(event, id, handler);
+      }
+    });
 
     if (map.getLayer(id)) {
       map.removeLayer(id);
@@ -229,15 +284,13 @@ export default class Layer extends React.Component<Props> {
       const normalizedImages = !Array.isArray(images[0]) ? [images] : images;
       (normalizedImages as ImageDefinitionWithOptions[])
         .map(([key, ...rest]) => key)
-        .forEach(map.removeImage);
+        .forEach(map.removeImage.bind(map));
     }
-
-    map.off('styledata', this.onStyleDataChange);
   }
 
-  public componentWillReceiveProps(props: Props) {
+  public UNSAFE_componentWillReceiveProps(props: Props) {
     const { paint, layout, before, filter, id, minZoom, maxZoom } = this.props;
-    const { map } = this.context;
+    const { map } = this.props;
 
     if (!isEqual(props.paint, paint)) {
       const paintDiff = diff(paint, props.paint);
@@ -255,8 +308,8 @@ export default class Layer extends React.Component<Props> {
       });
     }
 
-    if (props.filter && filter && !isEqual(props.filter, filter)) {
-      map.setFilter(id, props.filter || []);
+    if (!isEqual(props.filter, filter)) {
+      map.setFilter(id, props.filter);
     }
 
     if (before !== props.before) {
@@ -267,6 +320,23 @@ export default class Layer extends React.Component<Props> {
       // TODO: Fix when PR https://github.com/DefinitelyTyped/DefinitelyTyped/pull/22036 is merged
       map.setLayerZoomRange(id, props.minZoom!, props.maxZoom!);
     }
+
+    (Object.entries(eventToHandler) as Array<
+      [keyof EventToHandlersType, keyof LayerEvents]
+    >).forEach(([event, propName]) => {
+      const oldHandler = this.props[propName];
+      const newHandler = props[propName];
+
+      if (oldHandler !== newHandler) {
+        if (oldHandler) {
+          map.off(event, id, oldHandler);
+        }
+
+        if (newHandler) {
+          map.on(event, id, newHandler);
+        }
+      }
+    });
   }
 
   public getChildren = () => {
@@ -287,7 +357,7 @@ export default class Layer extends React.Component<Props> {
   };
 
   public render() {
-    const { map } = this.context;
+    const { map } = this.props;
     const { sourceId, draggedChildren } = this.props;
     let children = this.getChildren();
 
@@ -313,7 +383,7 @@ export default class Layer extends React.Component<Props> {
     if (source && !sourceId && source.setData) {
       source.setData({
         type: 'FeatureCollection',
-        features
+        features: features as GeoJSON.Feature[]
       });
     }
 

@@ -3,10 +3,11 @@ import {
   RasterSource,
   GeoJSONSource,
   GeoJSONSourceRaw,
+  RasterDemSource,
   ImageSource,
   VideoSource,
-  Point,
-  Map
+  CanvasSource,
+  Point
 } from 'mapbox-gl';
 
 export interface AnchorOffsetLimits {
@@ -33,28 +34,11 @@ export type Sources =
   | GeoJSONSource
   | GeoJSONSourceRaw
   | ImageSource
-  | VideoSource;
-
-export type SourceOptionData =
-  | GeoJSON.Feature<GeoJSON.GeometryObject>
-  | GeoJSON.FeatureCollection<GeoJSON.GeometryObject>
-  | string;
-
-export interface Feature {
-  type: 'Feature';
-  geometry: {
-    type: string;
-    coordinates: GeoJSON.Position;
-  };
-  // tslint:disable-next-line:no-any
-  properties: any;
-}
+  | VideoSource
+  | CanvasSource
+  | RasterDemSource;
 
 export type TilesJson = VectorSource | RasterSource;
-
-export interface Context {
-  map: Map;
-}
 
 export type LayerType =
   | 'fill'
@@ -72,5 +56,5 @@ export type AnyShapeCoordinates =
   | number[][][][];
 
 export type OptionalOffset = {
-  [P in Anchor]?: number[] | Point;
+  [P in Anchor]?: [number, number] | Point;
 }
